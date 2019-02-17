@@ -15,13 +15,13 @@ namespace GameBoyPngConverter
             using (var image = new Bitmap(pngStream))
             {
                 var colorpalette = ExtractColorPalette(image);
-                if(image.Width % 8 != 0 || image.Height % 8 != 0)
+                if (image.Width % 8 != 0 || image.Height % 8 != 0)
                 {
                     Console.WriteLine("The height and width of your image must be a multiple of 8 pixels, please fix and try again");
                     return;
                 }
 
-                if(colorpalette.Count > 4)
+                if (colorpalette.Count > 4)
                 {
                     Console.WriteLine("There are more than 4 colors in your image, please fix and try again");
                     return;
@@ -34,65 +34,113 @@ namespace GameBoyPngConverter
                 var heightinsprites = image.Height / 8;
 
                 var spriteBytes = new List<Byte>();
+                var uniquesprites = new List<Sprite>();
+                var dedupedsprites = new List<Sprite>();
 
-                for(var spriterow = 1; spriterow <= heightinsprites; spriterow++)
-                {
-                    for (var spritecol = 1; spritecol <= widthinsprites; spritecol++)
-                    {
-                        // go row by row in this sprite
-                        for (var y = (spriterow * 8 - 8); y < spriterow * 8; y++)
-                        {
-                            var rowBitsOne = new List<bool>();
-                            var rowBitsTwo = new List<bool>();
-                            for (var x = (spritecol * 8 - 8); x < spritecol * 8; x++)
-                            {
-                                var pixelcolor = image.GetPixel(x, y);
-                                if(pixelcolor == colorpalette[0])
-                                {
-                                    // darkest color
-                                    rowBitsOne.Add(true);
-                                    rowBitsTwo.Add(true);
-                                }
-                                else if (pixelcolor == colorpalette[1])
-                                {
+                GenerateSprites(image, colorpalette, widthinsprites, heightinsprites, uniquesprites, dedupedsprites);
 
-                                    rowBitsOne.Add(false);
-                                    rowBitsTwo.Add(true);
-                                }
-                                else if (pixelcolor == colorpalette[2])
-                                {
-                                    rowBitsOne.Add(true);
-                                    rowBitsTwo.Add(false);
-                                }
-                                else
-                                {
-                                    // lightest color
-                                    rowBitsOne.Add(false);
-                                    rowBitsTwo.Add(false);
-                                }
-                            }
-                            // revese bits before converting to bytes
-                            rowBitsOne.Reverse();
-                            rowBitsTwo.Reverse();
-                            // add rows bits to byte array for entire image
-                            spriteBytes.Add(ConvertToByte(new BitArray(rowBitsOne.ToArray())));
-                            spriteBytes.Add(ConvertToByte(new BitArray(rowBitsTwo.ToArray())));
-                        }
-                    }
-                }
-                var result = ByteArrayToString(spriteBytes.ToArray());
-                var map = new StringBuilder();
-                for(var i = 0; i < 20*18; i++)
-                {
-                    map.AppendFormat("0x{0:X2}, ", i);
-                }
-                var mapstring = map.ToString();
+                // now loop unique sprites and create map, remapping duplicates as we go
+                
 
-                if(spriteBytes.Count/16 > 256)
+                var result = GenerateDataFile(dedupedsprites);
+
+                var mapstring = GenerateMapFile(uniquesprites, dedupedsprites);
+
+                if (spriteBytes.Count / 16 > 256)
                 {
                     Console.WriteLine("Warning you have more than 256 tiles making it very difficault to display them all on the gameboy at the same time, try an image that could have more repeated tiles");
                 }
             }
+        }
+
+        private static void GenerateSprites(Bitmap image, List<Color> colorpalette, int widthinsprites, int heightinsprites, List<Sprite> uniquesprites, List<Sprite> dedupedsprites)
+        {
+            for (var spriterow = 1; spriterow <= heightinsprites; spriterow++)
+            {
+                for (var spritecol = 1; spritecol <= widthinsprites; spritecol++)
+                {
+                    var newsprite = new Sprite();
+
+                    // go row by row in this sprite
+                    for (var y = (spriterow * 8 - 8); y < spriterow * 8; y++)
+                    {
+                        var rowBitsOne = new List<bool>();
+                        var rowBitsTwo = new List<bool>();
+
+                        // loop each column along this row creating two bytes per row
+                        for (var x = (spritecol * 8 - 8); x < spritecol * 8; x++)
+                        {
+                            var pixelcolor = image.GetPixel(x, y);
+                            if (pixelcolor == colorpalette[0])
+                            {
+                                // darkest color
+                                rowBitsOne.Add(true);
+                                rowBitsTwo.Add(true);
+                            }
+                            else if (pixelcolor == colorpalette[1])
+                            {
+
+                                rowBitsOne.Add(false);
+                                rowBitsTwo.Add(true);
+                            }
+                            else if (pixelcolor == colorpalette[2])
+                            {
+                                rowBitsOne.Add(true);
+                                rowBitsTwo.Add(false);
+                            }
+                            else
+                            {
+                                // lightest color
+                                rowBitsOne.Add(false);
+                                rowBitsTwo.Add(false);
+                            }
+                        }
+
+                        // revese bits before converting to bytes
+                        rowBitsOne.Reverse();
+                        rowBitsTwo.Reverse();
+
+
+                        newsprite.Bytes.Add(ConvertToByte(new BitArray(rowBitsOne.ToArray())));
+                        newsprite.Bytes.Add(ConvertToByte(new BitArray(rowBitsTwo.ToArray())));
+                    }
+
+                    // add to unique sprites
+                    uniquesprites.Add(newsprite);
+
+                    // check if is a duplicate and if not add to de-duped sprites
+                    if (!dedupedsprites.Exists(s=>s.HashCode==newsprite.HashCode))
+                    {
+                        dedupedsprites.Add(newsprite);
+                    }
+                }
+            }
+        }
+
+        private static string GenerateDataFile(List<Sprite> sprites)
+        {
+            var allbytes = new List<Byte>();
+            sprites.ForEach(s => allbytes.AddRange(s.Bytes));
+            return ByteArrayToString(allbytes.ToArray());
+        }
+
+        private static string GenerateMapFile(List<Sprite> uniquesprites, List<Sprite> dedupedsprites)
+        {
+            var hex = new StringBuilder();
+            var i = 0;
+            uniquesprites.ForEach(us =>
+            {
+                // check position of this unique sprite in dedupedsprites
+                var index = dedupedsprites.FindIndex(ds => ds.HashCode == us.HashCode);
+                hex.AppendFormat("0x{0:X2}", index);
+                if (i < uniquesprites.Count - 1)
+                {
+                    hex.Append(",");
+                }
+                i++;
+            });
+
+            return hex.ToString();
         }
 
         private static string ByteArrayToString(byte[] ba)
