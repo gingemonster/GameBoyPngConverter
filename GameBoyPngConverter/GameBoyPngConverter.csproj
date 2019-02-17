@@ -6,6 +6,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="tiledatatemplate.c" />
+    <None Remove="tilemaptemplate.c" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="tiledatatemplate.c" />
+    <EmbeddedResource Include="tilemaptemplate.c" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="System.Drawing.Common" Version="4.5.1" />
   </ItemGroup>
 

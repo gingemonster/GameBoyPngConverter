@@ -3,19 +3,38 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Reflection;
 using System.Text;
 
 namespace GameBoyPngConverter
 {
     class Program
     {
+        private const string TileDataTemplateFileName = "tiledatatemplate.c";
+        private const string TileMapTemplateFileName = "tilemaptemplate.c";
+        private const int TilePixelSize = 8;
+        private const string TokenNumberTiles = "NUMBER_TILES";
+        private const string TokenTileDataName = "TILE_DATA_NAME";
+        private const string TokenTileData = "TILE_DATA";
+        private const string TokenTileMapSize = "TILE_MAP_SIZE";
+        private const string TokenTileMapName = "TILE_MAP_NAME";
+        private const string TokenTileMap = "TILE_MAP";
+
         static void Main(string[] args)
         {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("You must supply a .png file as the first command line arguement");
+                return;
+            }
+
             using (var pngStream = new FileStream(args[0], FileMode.Open, FileAccess.Read))
             using (var image = new Bitmap(pngStream))
             {
+                var filename = MakeSafeFileName(Path.GetFileNameWithoutExtension(args[0]));
                 var colorpalette = ExtractColorPalette(image);
-                if (image.Width % 8 != 0 || image.Height % 8 != 0)
+
+                if (image.Width % TilePixelSize != 0 || image.Height % TilePixelSize != 0)
                 {
                     Console.WriteLine("The height and width of your image must be a multiple of 8 pixels, please fix and try again");
                     return;
@@ -29,32 +48,40 @@ namespace GameBoyPngConverter
 
                 OrderPaletteByBrigtness(colorpalette);
 
-                // loop each 8x8 sprite converting colors to hex values
-                var widthinsprites = image.Width / 8;
-                var heightinsprites = image.Height / 8;
 
-                var spriteBytes = new List<Byte>();
                 var uniquesprites = new List<Sprite>();
                 var dedupedsprites = new List<Sprite>();
 
-                GenerateSprites(image, colorpalette, widthinsprites, heightinsprites, uniquesprites, dedupedsprites);
+                GenerateSprites(image, colorpalette, uniquesprites, dedupedsprites);
 
-                // now loop unique sprites and create map, remapping duplicates as we go
-                
-
-                var result = GenerateDataFile(dedupedsprites);
-
-                var mapstring = GenerateMapFile(uniquesprites, dedupedsprites);
-
-                if (spriteBytes.Count / 16 > 256)
+                if (dedupedsprites.Count / TilePixelSize * 2 > 256)
                 {
                     Console.WriteLine("Warning you have more than 256 tiles making it very difficault to display them all on the gameboy at the same time, try an image that could have more repeated tiles");
                 }
+
+                var datastring = GenerateDataFile(dedupedsprites, filename);
+
+                var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, filename, image);
             }
         }
 
-        private static void GenerateSprites(Bitmap image, List<Color> colorpalette, int widthinsprites, int heightinsprites, List<Sprite> uniquesprites, List<Sprite> dedupedsprites)
+        private static string MakeSafeFileName(string filename)
         {
+            var chars = Path.GetInvalidFileNameChars();
+            foreach (char c in chars)
+            {
+                filename = filename.Replace(c, '_');
+            }
+            filename = filename.Replace(' ', '_');
+            return filename;
+        }
+
+        private static void GenerateSprites(Bitmap image, List<Color> colorpalette, List<Sprite> uniquesprites, List<Sprite> dedupedsprites)
+        {
+            // loop each 8x8 sprite converting colors to hex values
+            var widthinsprites = image.Width / 8;
+            var heightinsprites = image.Height / 8;
+
             for (var spriterow = 1; spriterow <= heightinsprites; spriterow++)
             {
                 for (var spritecol = 1; spritecol <= widthinsprites; spritecol++)
@@ -62,13 +89,13 @@ namespace GameBoyPngConverter
                     var newsprite = new Sprite();
 
                     // go row by row in this sprite
-                    for (var y = (spriterow * 8 - 8); y < spriterow * 8; y++)
+                    for (var y = spriterow * 8 - 8; y < spriterow * 8; y++)
                     {
                         var rowBitsOne = new List<bool>();
                         var rowBitsTwo = new List<bool>();
 
                         // loop each column along this row creating two bytes per row
-                        for (var x = (spritecol * 8 - 8); x < spritecol * 8; x++)
+                        for (var x = spritecol * 8 - 8; x < spritecol * 8; x++)
                         {
                             var pixelcolor = image.GetPixel(x, y);
                             if (pixelcolor == colorpalette[0])
@@ -117,14 +144,22 @@ namespace GameBoyPngConverter
             }
         }
 
-        private static string GenerateDataFile(List<Sprite> sprites)
+        private static string GenerateDataFile(List<Sprite> sprites, string filename)
         {
+            // use c file template
+            var template = ReadTemplateFile(TileDataTemplateFileName);
+            ReplaceToken(ref template, TokenNumberTiles, sprites.Count.ToString());
+            ReplaceToken(ref template, TokenTileDataName, filename + "_data");
+
             var allbytes = new List<Byte>();
             sprites.ForEach(s => allbytes.AddRange(s.Bytes));
-            return ByteArrayToString(allbytes.ToArray());
+
+            ReplaceToken(ref template, TokenTileData, ByteArrayToString(allbytes.ToArray()));
+
+            return template;
         }
 
-        private static string GenerateMapFile(List<Sprite> uniquesprites, List<Sprite> dedupedsprites)
+        private static string GenerateMapFile(List<Sprite> uniquesprites, List<Sprite> dedupedsprites, string filename, Bitmap image)
         {
             var hex = new StringBuilder();
             var i = 0;
@@ -140,7 +175,29 @@ namespace GameBoyPngConverter
                 i++;
             });
 
-            return hex.ToString();
+            var template = ReadTemplateFile(TileMapTemplateFileName);
+            ReplaceToken(ref template, TokenTileMapSize, (image.Width / TilePixelSize).ToString() + " x " + (image.Height / TilePixelSize).ToString());
+            ReplaceToken(ref template, TokenTileMapName, filename + "_map");
+            ReplaceToken(ref template, TokenTileMap, hex.ToString());
+
+            return template;
+        }
+
+        private static string ReadTemplateFile(string filename)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = "GameBoyPngConverter." + filename;
+
+            using (var stream = assembly.GetManifestResourceStream(resourceName))
+            using (var reader = new StreamReader(stream))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+
+        private static void ReplaceToken(ref string template, string tokenname, string value)
+        {
+            template = template.Replace("[[" + tokenname + "]]", value);
         }
 
         private static string ByteArrayToString(byte[] ba)
@@ -159,6 +216,7 @@ namespace GameBoyPngConverter
                 if((i+1) % 16 == 0)
                 {
                     hex.AppendLine();
+                    hex.Append("\t");
                 }
             }
                 
