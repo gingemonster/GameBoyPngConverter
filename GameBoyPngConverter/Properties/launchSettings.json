@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GameBoyPngConverter": {
+      "commandName": "Project",
+      "commandLineArgs": "\"pixel art splashscreen.png\""
+    }
+  }
+}
