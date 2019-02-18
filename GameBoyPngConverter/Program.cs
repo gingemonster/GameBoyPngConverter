@@ -25,6 +25,8 @@ namespace GameBoyPngConverter
             if (args.Length < 1)
             {
                 Console.WriteLine("You must supply a .png file as the first command line arguement");
+                Console.WriteLine("Errored - Press any key to exit");
+                Console.Read();
                 return;
             }
 
@@ -32,17 +34,22 @@ namespace GameBoyPngConverter
             using (var image = new Bitmap(pngStream))
             {
                 var filename = MakeSafeFileName(Path.GetFileNameWithoutExtension(args[0]));
-                var colorpalette = ExtractColorPalette(image);
+                
 
                 if (image.Width % TilePixelSize != 0 || image.Height % TilePixelSize != 0)
                 {
                     Console.WriteLine("The height and width of your image must be a multiple of 8 pixels, please fix and try again");
+                    Console.WriteLine("Errored - Press any key to exit");
+                    Console.Read();
                     return;
                 }
 
+                var colorpalette = ExtractColorPalette(image);
                 if (colorpalette.Count > 4)
                 {
                     Console.WriteLine("There are more than 4 colors in your image, please fix and try again");
+                    Console.WriteLine("Errored - Press any key to exit");
+                    Console.Read();
                     return;
                 }
 
@@ -60,8 +67,12 @@ namespace GameBoyPngConverter
                 }
 
                 var datastring = GenerateDataFile(dedupedsprites, filename);
+                WriteFile(Path.GetDirectoryName(args[0]), filename + "_data.c", datastring);
 
                 var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, filename, image);
+                WriteFile(Path.GetDirectoryName(args[0]), filename + "_map.c", mapstring);
+                Console.WriteLine("Completed - Press any key to exit");
+                Console.Read();
             }
         }
 
@@ -74,6 +85,18 @@ namespace GameBoyPngConverter
             }
             filename = filename.Replace(' ', '_');
             return filename;
+        }
+
+        private static void WriteFile(string filepath, string filename, string filecontent)
+        {
+            try
+            {
+                File.WriteAllText(Path.Combine(filepath, filename), filecontent);
+            }
+            catch
+            {
+                Console.WriteLine($"could not write to file '{Path.Combine(filepath, filename)}' check it is not read only or open in another application");
+            }
         }
 
         private static void GenerateSprites(Bitmap image, List<Color> colorpalette, List<Sprite> uniquesprites, List<Sprite> dedupedsprites)
@@ -246,6 +269,10 @@ namespace GameBoyPngConverter
                     if (!colors.Contains(pixelcolor))
                     {
                         colors.Add(pixelcolor);
+                        if(colors.Count > 4)
+                        {
+                            return colors;
+                        }
                     }
                 }
             }
