@@ -2,7 +2,7 @@
   "profiles": {
     "GameBoyPngConverter": {
       "commandName": "Project",
-      "commandLineArgs": "\"retrodx-switch.jpg\""
+      "commandLineArgs": "\"pixel art splashscreen.png\""
     }
   }
 }
