@@ -24,16 +24,20 @@ Or just drag and drop a png image onto the GameBoyPngConverter.exe
 ## Linux
 You need to download and unzip the files then open a terminal in the unzipped directory, then:
 
- 1. Change the permissions on the GameBoyPngConverter file to make them executable **chmod 777 ./GameBoyPngConverter**
- 2. Run the utility like this **./GameBoyPngConverter "path to my png file** where you replace **path to my png file** with the full path to the file you want to convert.
+ 1. You may need to install two dependancies **sudo apt install libc6-dev** and **sudo apt install libgdiplus**
+ 3. Change the permissions on the GameBoyPngConverter file to make them executable **chmod 777 ./GameBoyPngConverter**
+ 3. Run the utility like this **./GameBoyPngConverter "path to my png file** where you replace **path to my png file** with the full path to the file you want to convert.
+ 
+
 
 ## Mac / OSX
 You need to download and unzip the files then open a terminal in the unzipped directory, then:
 
- 1. Change the permissions on the GameBoyPngConverter file to make them executable 
+ 1. Install a platform specific package for OSX using [https://brew.sh/](https://brew.sh/) by running **brew install mono-libgdiplus**
+ 2. Change the permissions on the GameBoyPngConverter file to make them executable 
 **sudo chmod +x GameBoyPngConverter** and hit enter.
- 2. Type in the password of your admin account and hit enter to grant the executable permission to run
- 3. Now type in open **GameBoyPngConverter "path to my png file"** where you replace **path to my png file** with the full path to the file you want to convert, and hit enter.
+ 3. Type in the password of your admin account and hit enter to grant the executable permission to run
+ 4. Now type in open **./GameBoyPngConverter "path to my png file"** where you replace **path to my png file** with the full path to the file you want to convert, and hit enter.
 
 # Using the generated files
 Two files should be created in the same directory as your png named **mypngname_data.c** and **mypngname_map.c**. Copy both of these files to the project directory for your GameBoy game then use code similar to below to include in your game and display:
