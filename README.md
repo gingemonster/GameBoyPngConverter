@@ -2,6 +2,8 @@
 # GameBoyPngConverter  
 A utility, written in .net core, for converting 4 color png images to C files for use in the GameBoy Developer Kit (GBDK) when displaying full screen images, like a splash screen.
 
+If you are starting to learn how to develop you own GameBoy games check out our youtube tutorial series https://www.youtube.com/playlist?list=PLeEj4c2zF7PaFv5MPYhNAkBGrkx4iPGJo
+
 # Creating suitable images
 Images should be pre-processed and saved as .png images with the following specifications:
 
