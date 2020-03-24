@@ -24,7 +24,7 @@ namespace GameBoyPngConverter
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("You must supply a .png file as the first command line arguement");
+                Console.WriteLine("You must supply a .png file as the first command line argument");
                 Console.WriteLine("Errored - Press any key to exit");
                 Console.Read();
                 return;
@@ -63,7 +63,7 @@ namespace GameBoyPngConverter
 
                 if (dedupedsprites.Count / TilePixelSize * 2 > 256)
                 {
-                    Console.WriteLine("Warning you have more than 256 tiles making it very difficault to display them all on the gameboy at the same time, try an image that could have more repeated tiles");
+                    Console.WriteLine("Warning you have more than 256 tiles making it very difficult to display them all on the gameboy at the same time, try an image that could have more repeated tiles");
                 }
 
                 var datastring = GenerateDataFile(dedupedsprites, filename);
