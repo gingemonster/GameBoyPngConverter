@@ -19,14 +19,20 @@ namespace GameBoyPngConverter
         private const string TokenTileMapSize = "TILE_MAP_SIZE";
         private const string TokenTileMapName = "TILE_MAP_NAME";
         private const string TokenTileMap = "TILE_MAP";
+        private static bool automated = false;
 
         static void Main(string[] args)
         {
+            if (args.Length > 1 && args[1] == "-a")
+            {
+                automated = true;
+            }
             if (args.Length < 1)
             {
                 Console.WriteLine("You must supply a .png file as the first command line argument");
                 Console.WriteLine("Errored - Press any key to exit");
-                Console.Read();
+                if(!automated)
+                    Console.Read();
                 return;
             }
 
@@ -40,7 +46,8 @@ namespace GameBoyPngConverter
                 {
                     Console.WriteLine("The height and width of your image must be a multiple of 8 pixels, please fix and try again");
                     Console.WriteLine("Errored - Press any key to exit");
-                    Console.Read();
+                    if(!automated)
+                        Console.Read();
                     return;
                 }
 
@@ -49,7 +56,8 @@ namespace GameBoyPngConverter
                 {
                     Console.WriteLine("There are more than 4 colors in your image, please fix and try again");
                     Console.WriteLine("Errored - Press any key to exit");
-                    Console.Read();
+                    if(!automated)
+                        Console.Read();
                     return;
                 }
 
@@ -71,8 +79,15 @@ namespace GameBoyPngConverter
 
                 var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, filename, image);
                 WriteFile(Path.GetDirectoryName(args[0]), filename + "_map.c", mapstring);
-                Console.WriteLine("Completed - Press any key to exit");
-                Console.Read();
+                if(!automated)
+                {
+                    Console.WriteLine("Completed - Press any key to exit");
+                    Console.Read();
+                }
+                else
+                {
+                    Console.WriteLine("Completed");
+                }
             }
         }
 
