@@ -4,7 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
@@ -31,7 +30,10 @@ namespace GameBoyPngConverter
         {
             var rootCommand = new RootCommand("GameBoy png converter for GBDK.");
 
-            var filePathArgument = new Argument<string>("filePath", "Path to a .png file.");
+            var filePathArgument = new Argument<string>(
+                name: "filePath",
+                description: "Path to a .png file."
+             );
             rootCommand.AddArgument(filePathArgument);
 
             var automatedOption = new Option<bool>(
@@ -51,7 +53,7 @@ namespace GameBoyPngConverter
             var bwOption = new Option<bool>(
                 "--blackwhite",
                 () => false,
-                "Generate pallet of only two color: transparent and the darkest.");
+                "Generate palette of only two color: transparent and the darkest.");
             bwOption.AddAlias("-bw");
             rootCommand.AddOption(bwOption);
 
@@ -62,16 +64,6 @@ namespace GameBoyPngConverter
                 filePath = fileValue;
                 offsetFirstTile = offsetOptionValue;
                 bwMode = bwOptionValue;
-
-                if (string.IsNullOrEmpty(filePath))
-                {
-                    ConsoleStatus.Errored();
-                    Console.WriteLine("You must supply a .png file as the first command line argument");
-                    Console.WriteLine("Press any key to exit...t");
-                    if (!automated)
-                        Console.Read();
-                    return;
-                }
             }, filePathArgument, automatedOption, offsetOption, bwOption);
 
             var commandResult = await rootCommand.InvokeAsync(args);
@@ -79,11 +71,16 @@ namespace GameBoyPngConverter
             if (commandResult == 1)
                 return;
 
+            if (string.IsNullOrEmpty(filePath))
+            {
+                return;
+            }
+
             if (!File.Exists(filePath))
             {
                 ConsoleStatus.Errored();
                 Console.WriteLine("File doesn't exists.");
-                Console.WriteLine("Press any key to exit...t");
+                Console.WriteLine("Press any key to exit...");
                 if (!automated)
                     Console.Read();
                 return;
@@ -92,14 +89,14 @@ namespace GameBoyPngConverter
             using (var pngStream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
             using (var image = new Bitmap(pngStream))
             {
-                var filename = MakeSafeFileName(Path.GetFileNameWithoutExtension(args[0]));
+                var fileName = MakeSafeFileName(Path.GetFileNameWithoutExtension(args[0]));
 
 
                 if (image.Width % TilePixelSize != 0 || image.Height % TilePixelSize != 0)
                 {
                     ConsoleStatus.Errored();
                     Console.WriteLine("The height and width of your image must be a multiple of 8 pixels, please fix and try again");
-                    Console.WriteLine("Press any key to exit...t");
+                    Console.WriteLine("Press any key to exit...");
                     if (!automated)
                         Console.Read();
                     return;
@@ -110,7 +107,7 @@ namespace GameBoyPngConverter
                 {
                     ConsoleStatus.Errored();
                     Console.WriteLine("There are more than 4 colors in your image, please fix and try again");
-                    Console.WriteLine("Press any key to exit...t");
+                    Console.WriteLine("Press any key to exit...");
                     if (!automated)
                         Console.Read();
                     return;
@@ -130,15 +127,15 @@ namespace GameBoyPngConverter
                     Console.WriteLine("- you have more than 256 tiles making it very difficult to display them all on the gameboy at the same time, try an image that could have more repeated tiles");
                 }
 
-                var datastring = GenerateDataFile(dedupedsprites, filename);
-                WriteFile(Path.GetDirectoryName(args[0]), filename + "_data.c", datastring);
+                var datastring = GenerateDataFile(dedupedsprites, fileName);
+                WriteFile(Path.GetDirectoryName(args[0]), fileName + "_data.c", datastring);
 
-                var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, filename, image);
-                WriteFile(Path.GetDirectoryName(args[0]), filename + "_map.c", mapstring);
+                var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, fileName, image);
+                WriteFile(Path.GetDirectoryName(args[0]), fileName + "_map.c", mapstring);
                 if (!automated)
                 {
                     ConsoleStatus.Completed();
-                    Console.WriteLine("Press any key to exit...t");
+                    Console.WriteLine("Press any key to exit...");
                     Console.Read();
                 }
                 else
@@ -149,26 +146,26 @@ namespace GameBoyPngConverter
             }
         }
 
-        private static string MakeSafeFileName(string filename)
+        private static string MakeSafeFileName(string fileName)
         {
             var chars = Path.GetInvalidFileNameChars();
             foreach (char c in chars)
             {
-                filename = filename.Replace(c, '_');
+                fileName = fileName.Replace(c, '_');
             }
-            filename = filename.Replace(' ', '_');
-            return filename;
+            fileName = fileName.Replace(' ', '_');
+            return fileName;
         }
 
-        private static void WriteFile(string filepath, string filename, string filecontent)
+        private static void WriteFile(string filepath, string fileName, string filecontent)
         {
             try
             {
-                File.WriteAllText(Path.Combine(filepath, filename), filecontent);
+                File.WriteAllText(Path.Combine(filepath, fileName), filecontent);
             }
             catch
             {
-                Console.WriteLine($"could not write to file '{Path.Combine(filepath, filename)}' check it is not read only or open in another application");
+                Console.WriteLine($"could not write to file '{Path.Combine(filepath, fileName)}' check it is not read only or open in another application");
             }
         }
 
@@ -240,12 +237,12 @@ namespace GameBoyPngConverter
             }
         }
 
-        private static string GenerateDataFile(List<Sprite> sprites, string filename)
+        private static string GenerateDataFile(List<Sprite> sprites, string fileName)
         {
             // use c file template
             var template = ReadTemplateFile(TileDataTemplateFileName);
             ReplaceToken(ref template, TokenNumberTiles, sprites.Count.ToString());
-            ReplaceToken(ref template, TokenTileDataName, filename + "_data");
+            ReplaceToken(ref template, TokenTileDataName, fileName + "_data");
 
             var allbytes = new List<Byte>();
             sprites.ForEach(s => allbytes.AddRange(s.Bytes));
@@ -255,34 +252,40 @@ namespace GameBoyPngConverter
             return template;
         }
 
-        private static string GenerateMapFile(List<Sprite> uniquesprites, List<Sprite> dedupedsprites, string filename, Bitmap image)
+        private static string GenerateMapFile(List<Sprite> uniqueSprites, List<Sprite> dedupedSprites, string fileName, Bitmap image)
         {
             var hex = new StringBuilder();
             var i = 0;
-            uniquesprites.ForEach(us =>
+            var mapTileWidth = (image.Width / TilePixelSize);
+            uniqueSprites.ForEach(us =>
             {
-                // check position of this unique sprite in dedupedsprites
-                var index = dedupedsprites.FindIndex(ds => ds.HashCode == us.HashCode) + offsetFirstTile;
+                // check position of this unique sprite in dedupedSprites
+                var index = dedupedSprites.FindIndex(ds => ds.HashCode == us.HashCode) + offsetFirstTile;
                 hex.AppendFormat("0x{0:X2}", index);
-                if (i < uniquesprites.Count - 1)
+                if (i < uniqueSprites.Count - 1)
                 {
                     hex.Append(",");
+                    if ((i + 1) % mapTileWidth == 0)
+                    {
+                        hex.AppendLine();
+                        hex.Append("\t");
+                    }
                 }
                 i++;
             });
 
             var template = ReadTemplateFile(TileMapTemplateFileName);
-            ReplaceToken(ref template, TokenTileMapSize, (image.Width / TilePixelSize).ToString() + " x " + (image.Height / TilePixelSize).ToString());
-            ReplaceToken(ref template, TokenTileMapName, filename + "_map");
+            ReplaceToken(ref template, TokenTileMapSize, mapTileWidth.ToString() + " x " + (image.Height / TilePixelSize).ToString());
+            ReplaceToken(ref template, TokenTileMapName, fileName + "_map");
             ReplaceToken(ref template, TokenTileMap, hex.ToString());
 
             return template;
         }
 
-        private static string ReadTemplateFile(string filename)
+        private static string ReadTemplateFile(string fileName)
         {
             var assembly = Assembly.GetExecutingAssembly();
-            var resourceName = "GameBoyPngConverter." + filename;
+            var resourceName = "GameBoyPngConverter." + fileName;
 
             using (var stream = assembly.GetManifestResourceStream(resourceName))
             using (var reader = new StreamReader(stream))
@@ -291,15 +294,13 @@ namespace GameBoyPngConverter
             }
         }
 
-        private static void ReplaceToken(ref string template, string tokenname, string value)
+        private static void ReplaceToken(ref string template, string tokenName, string value)
         {
-            template = template.Replace("[[" + tokenname + "]]", value);
+            template = template.Replace("[[" + tokenName + "]]", value);
         }
 
         private static string ByteArrayToString(byte[] ba)
         {
-            // TODO nice linebreaks every 16
-            // TODO remove last ,
             var hex = new StringBuilder(ba.Length * 2);
 
             for (var i = 0; i < ba.Length; i++)
@@ -308,11 +309,11 @@ namespace GameBoyPngConverter
                 if (i < ba.Length - 1)
                 {
                     hex.Append(",");
-                }
-                if ((i + 1) % 16 == 0)
-                {
-                    hex.AppendLine();
-                    hex.Append("\t");
+                    if ((i + 1) % 16 == 0)
+                    {
+                        hex.AppendLine();
+                        hex.Append("\t");
+                    }
                 }
             }
 
@@ -338,10 +339,10 @@ namespace GameBoyPngConverter
             {
                 for (var y = 0; y < image.Height; y++)
                 {
-                    var pixelcolor = image.GetPixel(x, y);
-                    if (!colors.Contains(pixelcolor))
+                    var pixelColor = image.GetPixel(x, y);
+                    if (!colors.Contains(pixelColor))
                     {
-                        colors.Add(pixelcolor);
+                        colors.Add(pixelColor);
                         if (colors.Count > 4)
                         {
                             return colors;
@@ -358,8 +359,12 @@ namespace GameBoyPngConverter
             palette.Sort((a, b) => a.GetBrightness().CompareTo(b.GetBrightness()));
             if (bwMode && palette.Count == 2)
             {
-                palette.Insert(1,Color.Transparent);
-                palette.Insert(2,Color.Transparent);
+                palette.Insert(1, Color.Transparent);
+                palette.Insert(2, Color.Transparent);
+            }
+            else if (bwMode && palette.Count == 3)
+            {
+                palette.Insert(2, Color.Transparent);
             }
         }
     }

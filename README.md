@@ -1,6 +1,6 @@
 
 # GameBoyPngConverter  
-A utility, written in .net core, for converting 4 color png images to C files for use in the GameBoy Developer Kit (GBDK) when displaying full screen images, like a splash screen.
+A utility, written in .NET 6, for converting 4 color png images to C files for use in the GameBoy Developer Kit (GBDK) when displaying full screen images, like a splash screen.
 
 If you are starting to learn how to develop you own GameBoy games check out our youtube tutorial series https://www.youtube.com/playlist?list=PLeEj4c2zF7PaFv5MPYhNAkBGrkx4iPGJo
 
@@ -40,6 +40,31 @@ You need to download and unzip the files then open a terminal in the unzipped di
 **sudo chmod +x GameBoyPngConverter** and hit enter.
  3. Type in the password of your admin account and hit enter to grant the executable permission to run
  4. Now type in open **./GameBoyPngConverter "path to my png file"** where you replace **path to my png file** with the full path to the file you want to convert, and hit enter.
+
+
+ # Additional parameters
+ The simples way to use this application is to run it with only one parameter containing path to a .png file. For Windows it looks like this:
+
+ > GameBoyPngConverter.exe "path to my png file"
+
+You can also use this addition options:
+
+    -a, --automated        Automated generation process. [default: False]
+    -o, --offset <offset>  Set offset of first tile to generate map file. [default:  0]
+    -bw, --blackwhite      Generate palette of only two color: transparent and the darkest. [default: False]
+
+And use it as:
+
+ > GameBoyPngConverter.exe "path to my png file" -o 32 -bw
+
+ ## Offset
+
+Offset can be usefull in case when you have loaded into RAM some other tiles for other map and you want to load data from this image after this tiles (ex. to show it on window layer), data for the new map have to be shifted according to number of tiles loaded before.
+
+## Black and white mode
+
+When you generate data and map for file with only 2 or 3 colors, generated tiles with use only the darkest colors. When you set this flag, image with only 2 or 3 colors will use colors from the darkest and as the last one, it will use transparent color.
+
 
 # Using the generated files
 Two files should be created in the same directory as your png named **mypngname_data.c** and **mypngname_map.c**. Copy both of these files to the project directory for your GameBoy game then use code similar to below to include in your game and display:
