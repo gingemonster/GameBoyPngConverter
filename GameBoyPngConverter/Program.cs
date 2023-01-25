@@ -1,10 +1,13 @@
 ﻿using System;
+using System.CommandLine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace GameBoyPngConverter
 {
@@ -20,33 +23,62 @@ namespace GameBoyPngConverter
         private const string TokenTileMapName = "TILE_MAP_NAME";
         private const string TokenTileMap = "TILE_MAP";
         private static bool automated = false;
+        private static int offsetFirstTile = 0;
 
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            if (args.Length > 1 && args[1] == "-a")
+            var rootCommand = new RootCommand();
+
+            var filePathArgument = new Argument<string>("filePath", "Path to a .png file.");
+            rootCommand.AddArgument(filePathArgument);
+
+            var automatedOption = new Option<bool>(
+                "--automated",
+                () => false,
+                "Automated generation process.");
+            automatedOption.AddAlias("-a");
+            rootCommand.AddOption(automatedOption);
+
+            var offsetOption = new Option<int>(
+                "--offset",
+                () => 0,
+                "Set offset of first tile to generate map file.");
+            offsetOption.AddAlias("-o");
+            rootCommand.AddOption(offsetOption);
+
+            var bwOption = new Option<bool>(
+                "--blackwhite",
+                () => false,
+                "Generate pallet of only two color: transparent and the darkest.");
+            bwOption.AddAlias("-bw");
+            rootCommand.AddOption(bwOption);
+
+            rootCommand.SetHandler((automatedOptionValue) =>
             {
                 automated = true;
-            }
-            if (args.Length < 1)
+            });
+
+            rootCommand.SetHandler((fileValue, automatedOptionValue, offsetOptionValue, bwOptionValue) =>
             {
-                Console.WriteLine("You must supply a .png file as the first command line argument");
-                Console.WriteLine("Errored - Press any key to exit");
-                if(!automated)
-                    Console.Read();
-                return;
-            }
+                Console.WriteLine($"file {fileValue}");
+                Console.WriteLine($"automated {automatedOptionValue}");
+                Console.WriteLine($"offset {offsetOptionValue}");
+                Console.WriteLine($"bw {bwOptionValue}");
+            }, filePathArgument, automatedOption, offsetOption, bwOption);
+
+            await rootCommand.InvokeAsync(args);
 
             using (var pngStream = new FileStream(args[0], FileMode.Open, FileAccess.Read))
             using (var image = new Bitmap(pngStream))
             {
                 var filename = MakeSafeFileName(Path.GetFileNameWithoutExtension(args[0]));
-                
+
 
                 if (image.Width % TilePixelSize != 0 || image.Height % TilePixelSize != 0)
                 {
                     Console.WriteLine("The height and width of your image must be a multiple of 8 pixels, please fix and try again");
                     Console.WriteLine("Errored - Press any key to exit");
-                    if(!automated)
+                    if (!automated)
                         Console.Read();
                     return;
                 }
@@ -56,7 +88,7 @@ namespace GameBoyPngConverter
                 {
                     Console.WriteLine("There are more than 4 colors in your image, please fix and try again");
                     Console.WriteLine("Errored - Press any key to exit");
-                    if(!automated)
+                    if (!automated)
                         Console.Read();
                     return;
                 }
@@ -79,7 +111,7 @@ namespace GameBoyPngConverter
 
                 var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, filename, image);
                 WriteFile(Path.GetDirectoryName(args[0]), filename + "_map.c", mapstring);
-                if(!automated)
+                if (!automated)
                 {
                     Console.WriteLine("Completed - Press any key to exit");
                     Console.Read();
@@ -174,7 +206,7 @@ namespace GameBoyPngConverter
                     uniquesprites.Add(newsprite);
 
                     // check if is a duplicate and if not add to de-duped sprites
-                    if (!dedupedsprites.Exists(s=>s.HashCode==newsprite.HashCode))
+                    if (!dedupedsprites.Exists(s => s.HashCode == newsprite.HashCode))
                     {
                         dedupedsprites.Add(newsprite);
                     }
@@ -244,20 +276,20 @@ namespace GameBoyPngConverter
             // TODO remove last ,
             var hex = new StringBuilder(ba.Length * 2);
 
-            for(var i = 0; i < ba.Length; i++)
+            for (var i = 0; i < ba.Length; i++)
             {
                 hex.AppendFormat("0x{0:X2}", ba[i]);
                 if (i < ba.Length - 1)
                 {
                     hex.Append(",");
                 }
-                if((i+1) % 16 == 0)
+                if ((i + 1) % 16 == 0)
                 {
                     hex.AppendLine();
                     hex.Append("\t");
                 }
             }
-                
+
             return hex.ToString();
         }
 
@@ -276,15 +308,15 @@ namespace GameBoyPngConverter
         {
             List<Color> colors = new List<Color>();
 
-            for(var x = 0; x < image.Width; x++)
+            for (var x = 0; x < image.Width; x++)
             {
-                for(var y=0; y < image.Height; y++)
+                for (var y = 0; y < image.Height; y++)
                 {
                     var pixelcolor = image.GetPixel(x, y);
                     if (!colors.Contains(pixelcolor))
                     {
                         colors.Add(pixelcolor);
-                        if(colors.Count > 4)
+                        if (colors.Count > 4)
                         {
                             return colors;
                         }
