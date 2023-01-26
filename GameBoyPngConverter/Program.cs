@@ -1,10 +1,12 @@
 ﻿using System;
+using System.CommandLine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace GameBoyPngConverter
 {
@@ -20,33 +22,82 @@ namespace GameBoyPngConverter
         private const string TokenTileMapName = "TILE_MAP_NAME";
         private const string TokenTileMap = "TILE_MAP";
         private static bool automated = false;
+        private static string filePath = string.Empty;
+        private static int offsetFirstTile = 0;
+        private static bool bwMode;
 
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            if (args.Length > 1 && args[1] == "-a")
+            var rootCommand = new RootCommand("GameBoy png converter for GBDK.");
+
+            var filePathArgument = new Argument<string>(
+                name: "filePath",
+                description: "Path to a .png file."
+             );
+            rootCommand.AddArgument(filePathArgument);
+
+            var automatedOption = new Option<bool>(
+                "--automated",
+                () => false,
+                "Automated generation process.");
+            automatedOption.AddAlias("-a");
+            rootCommand.AddOption(automatedOption);
+
+            var offsetOption = new Option<int>(
+                "--offset",
+                () => 0,
+                "Set offset of first tile to generate map file.");
+            offsetOption.AddAlias("-o");
+            rootCommand.AddOption(offsetOption);
+
+            var bwOption = new Option<bool>(
+                "--blackwhite",
+                () => false,
+                "Generate palette of only two color: transparent and the darkest.");
+            bwOption.AddAlias("-bw");
+            rootCommand.AddOption(bwOption);
+
+            rootCommand.SetHandler((fileValue, automatedOptionValue, offsetOptionValue, bwOptionValue) =>
             {
-                automated = true;
+                automated = automatedOptionValue;
+
+                filePath = fileValue;
+                offsetFirstTile = offsetOptionValue;
+                bwMode = bwOptionValue;
+            }, filePathArgument, automatedOption, offsetOption, bwOption);
+
+            var commandResult = await rootCommand.InvokeAsync(args);
+
+            if (commandResult == 1)
+                return;
+
+            if (string.IsNullOrEmpty(filePath))
+            {
+                return;
             }
-            if (args.Length < 1)
+
+            if (!File.Exists(filePath))
             {
-                Console.WriteLine("You must supply a .png file as the first command line argument");
-                Console.WriteLine("Errored - Press any key to exit");
-                if(!automated)
+                ConsoleStatus.Errored();
+                Console.WriteLine("File doesn't exists.");
+                Console.WriteLine("Press any key to exit...");
+                if (!automated)
                     Console.Read();
                 return;
             }
 
-            using (var pngStream = new FileStream(args[0], FileMode.Open, FileAccess.Read))
+            using (var pngStream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
             using (var image = new Bitmap(pngStream))
             {
-                var filename = MakeSafeFileName(Path.GetFileNameWithoutExtension(args[0]));
-                
+                var fileName = MakeSafeFileName(Path.GetFileNameWithoutExtension(args[0]));
+
 
                 if (image.Width % TilePixelSize != 0 || image.Height % TilePixelSize != 0)
                 {
+                    ConsoleStatus.Errored();
                     Console.WriteLine("The height and width of your image must be a multiple of 8 pixels, please fix and try again");
-                    Console.WriteLine("Errored - Press any key to exit");
-                    if(!automated)
+                    Console.WriteLine("Press any key to exit...");
+                    if (!automated)
                         Console.Read();
                     return;
                 }
@@ -54,9 +105,10 @@ namespace GameBoyPngConverter
                 var colorpalette = ExtractColorPalette(image);
                 if (colorpalette.Count > 4)
                 {
+                    ConsoleStatus.Errored();
                     Console.WriteLine("There are more than 4 colors in your image, please fix and try again");
-                    Console.WriteLine("Errored - Press any key to exit");
-                    if(!automated)
+                    Console.WriteLine("Press any key to exit...");
+                    if (!automated)
                         Console.Read();
                     return;
                 }
@@ -71,84 +123,87 @@ namespace GameBoyPngConverter
 
                 if (dedupedsprites.Count / TilePixelSize * 2 > 256)
                 {
-                    Console.WriteLine("Warning you have more than 256 tiles making it very difficult to display them all on the gameboy at the same time, try an image that could have more repeated tiles");
+                    ConsoleStatus.Warning();
+                    Console.WriteLine("- you have more than 256 tiles making it very difficult to display them all on the gameboy at the same time, try an image that could have more repeated tiles");
                 }
 
-                var datastring = GenerateDataFile(dedupedsprites, filename);
-                WriteFile(Path.GetDirectoryName(args[0]), filename + "_data.c", datastring);
+                var datastring = GenerateDataFile(dedupedsprites, fileName);
+                WriteFile(Path.GetDirectoryName(args[0]), fileName + "_data.c", datastring);
 
-                var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, filename, image);
-                WriteFile(Path.GetDirectoryName(args[0]), filename + "_map.c", mapstring);
-                if(!automated)
+                var mapstring = GenerateMapFile(uniquesprites, dedupedsprites, fileName, image);
+                WriteFile(Path.GetDirectoryName(args[0]), fileName + "_map.c", mapstring);
+                if (!automated)
                 {
-                    Console.WriteLine("Completed - Press any key to exit");
+                    ConsoleStatus.Completed();
+                    Console.WriteLine("Press any key to exit...");
                     Console.Read();
                 }
                 else
                 {
-                    Console.WriteLine("Completed");
+                    ConsoleStatus.Completed();
+                    Console.WriteLine();
                 }
             }
         }
 
-        private static string MakeSafeFileName(string filename)
+        private static string MakeSafeFileName(string fileName)
         {
             var chars = Path.GetInvalidFileNameChars();
             foreach (char c in chars)
             {
-                filename = filename.Replace(c, '_');
+                fileName = fileName.Replace(c, '_');
             }
-            filename = filename.Replace(' ', '_');
-            return filename;
+            fileName = fileName.Replace(' ', '_');
+            return fileName;
         }
 
-        private static void WriteFile(string filepath, string filename, string filecontent)
+        private static void WriteFile(string filepath, string fileName, string filecontent)
         {
             try
             {
-                File.WriteAllText(Path.Combine(filepath, filename), filecontent);
+                File.WriteAllText(Path.Combine(filepath, fileName), filecontent);
             }
             catch
             {
-                Console.WriteLine($"could not write to file '{Path.Combine(filepath, filename)}' check it is not read only or open in another application");
+                Console.WriteLine($"could not write to file '{Path.Combine(filepath, fileName)}' check it is not read only or open in another application");
             }
         }
 
-        private static void GenerateSprites(Bitmap image, List<Color> colorpalette, List<Sprite> uniquesprites, List<Sprite> dedupedsprites)
+        private static void GenerateSprites(Bitmap image, List<Color> colorPalette, List<Sprite> uniqueSprites, List<Sprite> dedupedSprites)
         {
             // loop each 8x8 sprite converting colors to hex values
-            var widthinsprites = image.Width / 8;
-            var heightinsprites = image.Height / 8;
+            var widthInSprites = image.Width / 8;
+            var heightInSprites = image.Height / 8;
 
-            for (var spriterow = 1; spriterow <= heightinsprites; spriterow++)
+            for (var spriteRow = 1; spriteRow <= heightInSprites; spriteRow++)
             {
-                for (var spritecol = 1; spritecol <= widthinsprites; spritecol++)
+                for (var spriteCol = 1; spriteCol <= widthInSprites; spriteCol++)
                 {
-                    var newsprite = new Sprite();
+                    var newSprite = new Sprite();
 
                     // go row by row in this sprite
-                    for (var y = spriterow * 8 - 8; y < spriterow * 8; y++)
+                    for (var y = spriteRow * 8 - 8; y < spriteRow * 8; y++)
                     {
                         var rowBitsOne = new List<bool>();
                         var rowBitsTwo = new List<bool>();
 
                         // loop each column along this row creating two bytes per row
-                        for (var x = spritecol * 8 - 8; x < spritecol * 8; x++)
+                        for (var x = spriteCol * 8 - 8; x < spriteCol * 8; x++)
                         {
                             var pixelcolor = image.GetPixel(x, y);
-                            if (pixelcolor == colorpalette[0])
+                            if (pixelcolor == colorPalette[0])
                             {
                                 // darkest color
                                 rowBitsOne.Add(true);
                                 rowBitsTwo.Add(true);
                             }
-                            else if (pixelcolor == colorpalette[1])
+                            else if (pixelcolor == colorPalette[1])
                             {
 
                                 rowBitsOne.Add(false);
                                 rowBitsTwo.Add(true);
                             }
-                            else if (pixelcolor == colorpalette[2])
+                            else if (pixelcolor == colorPalette[2])
                             {
                                 rowBitsOne.Add(true);
                                 rowBitsTwo.Add(false);
@@ -166,28 +221,28 @@ namespace GameBoyPngConverter
                         rowBitsTwo.Reverse();
 
 
-                        newsprite.Bytes.Add(ConvertToByte(new BitArray(rowBitsOne.ToArray())));
-                        newsprite.Bytes.Add(ConvertToByte(new BitArray(rowBitsTwo.ToArray())));
+                        newSprite.Bytes.Add(ConvertToByte(new BitArray(rowBitsOne.ToArray())));
+                        newSprite.Bytes.Add(ConvertToByte(new BitArray(rowBitsTwo.ToArray())));
                     }
 
                     // add to unique sprites
-                    uniquesprites.Add(newsprite);
+                    uniqueSprites.Add(newSprite);
 
                     // check if is a duplicate and if not add to de-duped sprites
-                    if (!dedupedsprites.Exists(s=>s.HashCode==newsprite.HashCode))
+                    if (!dedupedSprites.Exists(s => s.HashCode == newSprite.HashCode))
                     {
-                        dedupedsprites.Add(newsprite);
+                        dedupedSprites.Add(newSprite);
                     }
                 }
             }
         }
 
-        private static string GenerateDataFile(List<Sprite> sprites, string filename)
+        private static string GenerateDataFile(List<Sprite> sprites, string fileName)
         {
             // use c file template
             var template = ReadTemplateFile(TileDataTemplateFileName);
             ReplaceToken(ref template, TokenNumberTiles, sprites.Count.ToString());
-            ReplaceToken(ref template, TokenTileDataName, filename + "_data");
+            ReplaceToken(ref template, TokenTileDataName, fileName + "_data");
 
             var allbytes = new List<Byte>();
             sprites.ForEach(s => allbytes.AddRange(s.Bytes));
@@ -197,34 +252,40 @@ namespace GameBoyPngConverter
             return template;
         }
 
-        private static string GenerateMapFile(List<Sprite> uniquesprites, List<Sprite> dedupedsprites, string filename, Bitmap image)
+        private static string GenerateMapFile(List<Sprite> uniqueSprites, List<Sprite> dedupedSprites, string fileName, Bitmap image)
         {
             var hex = new StringBuilder();
             var i = 0;
-            uniquesprites.ForEach(us =>
+            var mapTileWidth = (image.Width / TilePixelSize);
+            uniqueSprites.ForEach(us =>
             {
-                // check position of this unique sprite in dedupedsprites
-                var index = dedupedsprites.FindIndex(ds => ds.HashCode == us.HashCode);
+                // check position of this unique sprite in dedupedSprites
+                var index = dedupedSprites.FindIndex(ds => ds.HashCode == us.HashCode) + offsetFirstTile;
                 hex.AppendFormat("0x{0:X2}", index);
-                if (i < uniquesprites.Count - 1)
+                if (i < uniqueSprites.Count - 1)
                 {
                     hex.Append(",");
+                    if ((i + 1) % mapTileWidth == 0)
+                    {
+                        hex.AppendLine();
+                        hex.Append("\t");
+                    }
                 }
                 i++;
             });
 
             var template = ReadTemplateFile(TileMapTemplateFileName);
-            ReplaceToken(ref template, TokenTileMapSize, (image.Width / TilePixelSize).ToString() + " x " + (image.Height / TilePixelSize).ToString());
-            ReplaceToken(ref template, TokenTileMapName, filename + "_map");
+            ReplaceToken(ref template, TokenTileMapSize, mapTileWidth.ToString() + " x " + (image.Height / TilePixelSize).ToString());
+            ReplaceToken(ref template, TokenTileMapName, fileName + "_map");
             ReplaceToken(ref template, TokenTileMap, hex.ToString());
 
             return template;
         }
 
-        private static string ReadTemplateFile(string filename)
+        private static string ReadTemplateFile(string fileName)
         {
             var assembly = Assembly.GetExecutingAssembly();
-            var resourceName = "GameBoyPngConverter." + filename;
+            var resourceName = "GameBoyPngConverter." + fileName;
 
             using (var stream = assembly.GetManifestResourceStream(resourceName))
             using (var reader = new StreamReader(stream))
@@ -233,31 +294,29 @@ namespace GameBoyPngConverter
             }
         }
 
-        private static void ReplaceToken(ref string template, string tokenname, string value)
+        private static void ReplaceToken(ref string template, string tokenName, string value)
         {
-            template = template.Replace("[[" + tokenname + "]]", value);
+            template = template.Replace("[[" + tokenName + "]]", value);
         }
 
         private static string ByteArrayToString(byte[] ba)
         {
-            // TODO nice linebreaks every 16
-            // TODO remove last ,
             var hex = new StringBuilder(ba.Length * 2);
 
-            for(var i = 0; i < ba.Length; i++)
+            for (var i = 0; i < ba.Length; i++)
             {
                 hex.AppendFormat("0x{0:X2}", ba[i]);
                 if (i < ba.Length - 1)
                 {
                     hex.Append(",");
-                }
-                if((i+1) % 16 == 0)
-                {
-                    hex.AppendLine();
-                    hex.Append("\t");
+                    if ((i + 1) % 16 == 0)
+                    {
+                        hex.AppendLine();
+                        hex.Append("\t");
+                    }
                 }
             }
-                
+
             return hex.ToString();
         }
 
@@ -276,15 +335,15 @@ namespace GameBoyPngConverter
         {
             List<Color> colors = new List<Color>();
 
-            for(var x = 0; x < image.Width; x++)
+            for (var x = 0; x < image.Width; x++)
             {
-                for(var y=0; y < image.Height; y++)
+                for (var y = 0; y < image.Height; y++)
                 {
-                    var pixelcolor = image.GetPixel(x, y);
-                    if (!colors.Contains(pixelcolor))
+                    var pixelColor = image.GetPixel(x, y);
+                    if (!colors.Contains(pixelColor))
                     {
-                        colors.Add(pixelcolor);
-                        if(colors.Count > 4)
+                        colors.Add(pixelColor);
+                        if (colors.Count > 4)
                         {
                             return colors;
                         }
@@ -298,6 +357,15 @@ namespace GameBoyPngConverter
         private static void OrderPaletteByBrigtness(List<Color> palette)
         {
             palette.Sort((a, b) => a.GetBrightness().CompareTo(b.GetBrightness()));
+            if (bwMode && palette.Count == 2)
+            {
+                palette.Insert(1, Color.Transparent);
+                palette.Insert(2, Color.Transparent);
+            }
+            else if (bwMode && palette.Count == 3)
+            {
+                palette.Insert(2, Color.Transparent);
+            }
         }
     }
 }
